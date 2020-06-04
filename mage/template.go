@@ -20,6 +20,9 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	
+	"github.com/magefile/mage/mg"
+
 	{{range .Imports}}{{.UniqueName}} "{{.Path}}"
 	{{end}}
 )
@@ -301,6 +304,7 @@ Options:
 
 	handleError := func(logger *log.Logger, err interface{}) {
 		if err != nil {
+			mg.RunShutdownHooks()
 			logger.Printf("Error: %+v\n", err)
 			type code interface {
 				ExitStatus() int
@@ -382,11 +386,14 @@ Options:
 				os.Exit(2)
 		}
 	}
+
+	defer mg.RunShutdownHooks()
 	if len(args.Args) < 1 {
 	{{- if .DefaultFunc.Name}}
 		ignoreDefault, _ := strconv.ParseBool(os.Getenv("MAGEFILE_IGNOREDEFAULT"))
 		if ignoreDefault {
 			if err := list(); err != nil {
+				mg.RunShutdownHooks()
 				logger.Println("Error:", err)
 				os.Exit(1)
 			}
@@ -397,6 +404,7 @@ Options:
 		return
 	{{- else}}
 		if err := list(); err != nil {
+			mg.RunShutdownHooks()
 			logger.Println("Error:", err)
 			os.Exit(1)
 		}
@@ -450,6 +458,7 @@ Options:
 			{{- end}}
 		{{- end}}
 		default:
+			mg.RunShutdownHooks()
 			logger.Printf("Unknown target specified: %q\n", target)
 			os.Exit(2)
 		}
