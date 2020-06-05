@@ -387,6 +387,7 @@ Options:
 		}
 	}
 	magnet.InitOutput()
+	defer magnet.Shutdown()
 	if len(args.Args) < 1 {
 	{{- if .DefaultFunc.Name}}
 		ignoreDefault, _ := strconv.ParseBool(os.Getenv("MAGEFILE_IGNOREDEFAULT"))
