@@ -20,7 +20,7 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
-	
+
 	"github.com/magefile/mage/mg"
 
 	{{range .Imports}}{{.UniqueName}} "{{.Path}}"
@@ -41,7 +41,7 @@ func main() {
 		val := os.Getenv(env)
 		if val == "" {
 			return false
-		}		
+		}
 		b, err := strconv.ParseBool(val)
 		if err != nil {
 			log.Printf("warning: environment variable %s is not a valid bool value: %v", env, val)
@@ -54,7 +54,7 @@ func main() {
 		val := os.Getenv(env)
 		if val == "" {
 			return 0
-		}		
+		}
 		d, err := time.ParseDuration(val)
 		if err != nil {
 			log.Printf("warning: environment variable %s is not a valid duration value: %v", env, val)
@@ -95,7 +95,7 @@ Options:
 		fs.Usage()
 		return
 	}
-		
+
 	// color is ANSI color type
 	type color int
 
@@ -140,7 +140,7 @@ Options:
 		brightcyan:    "\u001b[36;1m",
 		brightwhite:   "\u001b[37;1m",
 	}
-	
+
 	const _color_name = "blackredgreenyellowbluemagentacyanwhitebrightblackbrightredbrightgreenbrightyellowbrightbluebrightmagentabrightcyanbrightwhite"
 
 	var _color_index = [...]uint8{0, 5, 8, 13, 19, 23, 30, 34, 39, 50, 59, 70, 82, 92, 105, 115, 126}
@@ -174,7 +174,7 @@ Options:
 	// 	TERM=vt100
 	// 	TERM=cygwin
 	// 	TERM=xterm-mono
-    var noColorTerms = map[string]bool{
+	var noColorTerms = map[string]bool{
 		"vt100":      false,
 		"cygwin":     false,
 		"xterm-mono": false,
