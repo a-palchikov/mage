@@ -21,13 +21,20 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/magefile/mage/mg"
-
 	{{range .Imports}}{{.UniqueName}} "{{.Path}}"
 	{{end}}
 )
 
 func main() {
+	if err := run(); err != nil {
+		if exitCodeErr, ok := err.(interface{code() int}); ok {
+			os.Exit(exitCodeErr.code())
+		}
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// Use local types and functions in order to avoid name conflicts with additional magefiles.
 	type arguments struct {
 		Verbose       bool          // print out log statements
@@ -88,12 +95,12 @@ Options:
 	}
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		// flag will have printed out an error already.
-		return
+		return err
 	}
 	args.Args = fs.Args()
 	if args.Help && len(args.Args) == 0 {
 		fs.Usage()
-		return
+		return nil
 	}
 
 	// color is ANSI color type
@@ -302,18 +309,18 @@ Options:
 	// variable error.
 	_ = runTarget
 
-	handleError := func(logger *log.Logger, err interface{}) {
+	handleError := func(logger *log.Logger, err interface{}) error {
 		if err != nil {
-			mg.RunShutdownHooks()
 			logger.Printf("Error: %+v\n", err)
 			type code interface {
 				ExitStatus() int
 			}
 			if c, ok := err.(code); ok {
-				os.Exit(c.ExitStatus())
+				return newExitCodeError(c.ExitStatus())
 			}
-			os.Exit(1)
+			return newExitCodeError(1)
 		}
+		return nil
 	}
 	_ = handleError
 
@@ -332,15 +339,15 @@ Options:
 	if args.List {
 		if err := list(); err != nil {
 			log.Println(err)
-			os.Exit(1)
+			return newExitCodeError(1)
 		}
-		return
+		return nil
 	}
 
 	if args.Help {
 		if len(args.Args) < 1 {
 			logger.Println("no target specified")
-			os.Exit(2)
+			return newExitCodeError(2)
 		}
 		switch strings.ToLower(args.Args[0]) {
 			{{range .Funcs -}}
@@ -359,7 +366,7 @@ Options:
 				if len(aliases) > 0 {
 					fmt.Printf("Aliases: %s\n\n", strings.Join(aliases, ", "))
 				}
-				return
+				return nil
 			{{end -}}
 			{{range .Imports -}}
 				{{range .Info.Funcs -}}
@@ -378,37 +385,36 @@ Options:
 				if len(aliases) > 0 {
 					fmt.Printf("Aliases: %s\n\n", strings.Join(aliases, ", "))
 				}
-				return
+				return nil
 				{{end -}}
 			{{end -}}
 			default:
 				logger.Printf("Unknown target: %q\n", args.Args[0])
-				os.Exit(2)
+				return newExitCodeError(2)
 		}
 	}
 
-	defer mg.RunShutdownHooks()
+	{{- if .DeinitFunc}}
+	{{.DeinitFunc.ExecCode}}
+	{{- end}}
 	if len(args.Args) < 1 {
 	{{- if .DefaultFunc.Name}}
 		ignoreDefault, _ := strconv.ParseBool(os.Getenv("MAGEFILE_IGNOREDEFAULT"))
 		if ignoreDefault {
 			if err := list(); err != nil {
-				mg.RunShutdownHooks()
 				logger.Println("Error:", err)
-				os.Exit(1)
+				return newExitCodeError(1)
 			}
-			return
+			return nil
 		}
 		{{.DefaultFunc.ExecCode}}
-		handleError(logger, ret)
-		return
+		return handleError(logger, ret)
 	{{- else}}
 		if err := list(); err != nil {
-			mg.RunShutdownHooks()
 			logger.Println("Error:", err)
-			os.Exit(1)
+			return newExitCodeError(1)
 		}
-		return
+		return nil
 	{{- end}}
 	}
 	for x := 0; x < len(args.Args); {
@@ -431,13 +437,15 @@ Options:
 					// note that expected and args at this point include the arg for the target itself
 					// so we subtract 1 here to show the number of args without the target.
 					logger.Printf("not enough arguments for target \"{{.TargetName}}\", expected %v, got %v\n", expected-1, len(args.Args)-1)
-					os.Exit(2)
+					return newExitCodeError(2)
 				}
 				if args.Verbose {
 					logger.Println("Running target:", "{{.TargetName}}")
 				}
 				{{.ExecCode}}
-				handleError(logger, ret)
+				if err := handleError(logger, ret); err != nil {
+					return err
+				}
 		{{- end}}
 		{{range .Imports}}
 		{{$imp := .}}
@@ -448,24 +456,37 @@ Options:
 						// note that expected and args at this point include the arg for the target itself
 						// so we subtract 1 here to show the number of args without the target.
 						logger.Printf("not enough arguments for target \"{{.TargetName}}\", expected %v, got %v\n", expected-1, len(args.Args)-1)
-						os.Exit(2)
+						return newExitCodeError(2)
 					}
 					if args.Verbose {
 						logger.Println("Running target:", "{{.TargetName}}")
 					}
 					{{.ExecCode}}
-					handleError(logger, ret)
+					if err := handleError(logger, ret); err != nil {
+						return err
+					}
 			{{- end}}
 		{{- end}}
 		default:
-			mg.RunShutdownHooks()
 			logger.Printf("Unknown target specified: %q\n", target)
-			os.Exit(2)
+			return newExitCodeError(2)
 		}
 	}
+	return nil
 }
 
+func newExitCodeError(code int) exitCodeError {
+	return exitCodeError(code)
+}
 
+func (r exitCodeError) Error() string {
+	return fmt.Sprint("process exited with ", r)
+}
 
+type exitCodeError int
+
+func (r exitCodeError) code() int {
+	return int(r)
+}
 
 `
