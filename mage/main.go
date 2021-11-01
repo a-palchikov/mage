@@ -427,6 +427,7 @@ type mainfileTemplateData struct {
 	Description string
 	Funcs       []*parse.Function
 	DefaultFunc parse.Function
+	DeinitFunc  *parse.Function
 	Aliases     map[string]*parse.Function
 	Imports     []*parse.Import
 	BinaryName  string
@@ -550,6 +551,7 @@ func GenerateMainfile(binaryName, path string, info *parse.PkgInfo) error {
 		Aliases:     info.Aliases,
 		Imports:     info.Imports,
 		BinaryName:  binaryName,
+		DeinitFunc:  info.DeinitFunc,
 	}
 
 	if info.DefaultFunc != nil {
