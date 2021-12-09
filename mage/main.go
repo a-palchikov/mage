@@ -109,6 +109,7 @@ type Invocation struct {
 	GOOS       string        // sets the GOOS when producing a binary with -compileout
 	GOARCH     string        // sets the GOARCH when producing a binary with -compileout
 	Ldflags    string        // sets the ldflags when producing a binary with -compileout
+	ModMode    string        // sets the module download mode
 	Stdout     io.Writer     // writer to write stdout messages to
 	Stderr     io.Writer     // writer to write stderr messages to
 	Stdin      io.Reader     // reader to read stdin from
@@ -186,6 +187,7 @@ func Parse(stderr, stdout io.Writer, args []string) (inv Invocation, cmd Command
 	fs.StringVar(&inv.GOOS, "goos", "", "set GOOS for binary produced with -compile")
 	fs.StringVar(&inv.GOARCH, "goarch", "", "set GOARCH for binary produced with -compile")
 	fs.StringVar(&inv.Ldflags, "ldflags", "", "set ldflags for binary produced with -compile")
+	fs.StringVar(&inv.ModMode, "mod", "", "set module download mode")
 
 	// commands below
 
@@ -312,7 +314,14 @@ func Invoke(inv Invocation) int {
 		inv.CacheDir = mg.CacheDir()
 	}
 
-	files, err := Magefiles(inv.Dir, inv.GOOS, inv.GOARCH, inv.GoCmd, inv.Stderr, inv.Debug)
+	opts := listOptions{
+		goos:    inv.GOOS,
+		goarch:  inv.GOARCH,
+		goCmd:   inv.GoCmd,
+		modMode: inv.ModMode,
+		stderr:  inv.Stderr,
+	}
+	files, err := Magefiles(inv.Dir, opts)
 	if err != nil {
 		errlog.Println("Error determining list of magefiles:", err)
 		return 1
@@ -403,7 +412,18 @@ func Invoke(inv Invocation) int {
 		defer os.RemoveAll(main)
 	}
 	files = append(files, main)
-	if err := Compile(inv.GOOS, inv.GOARCH, inv.Ldflags, inv.Dir, inv.GoCmd, exePath, files, inv.Debug, inv.Stderr, inv.Stdout); err != nil {
+	if err := Compile(inv.Dir, compileOptions{
+		goos:      inv.GOOS,
+		goarch:    inv.GOARCH,
+		ldflags:   inv.Ldflags,
+		modMode:   inv.ModMode,
+		compileTo: exePath,
+		goCmd:     inv.GoCmd,
+		gofiles:   files,
+		isDebug:   inv.Debug,
+		stderr:    inv.Stderr,
+		stdout:    inv.Stdout,
+	}); err != nil {
 		errlog.Println("Error:", err)
 		return 1
 	}
@@ -434,7 +454,7 @@ type mainfileTemplateData struct {
 }
 
 // Magefiles returns the list of magefiles in dir.
-func Magefiles(magePath, goos, goarch, goCmd string, stderr io.Writer, isDebug bool) ([]string, error) {
+func Magefiles(magePath string, opts listOptions) ([]string, error) {
 	start := time.Now()
 	defer func() {
 		debug.Println("time to scan for Magefiles:", time.Since(start))
@@ -443,7 +463,7 @@ func Magefiles(magePath, goos, goarch, goCmd string, stderr io.Writer, isDebug b
 		return nil, err
 	}
 
-	env, err := internal.EnvWithGOOS(goos, goarch)
+	env, err := internal.EnvWithGOOS(opts.goos, opts.goarch)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +472,7 @@ func Magefiles(magePath, goos, goarch, goCmd string, stderr io.Writer, isDebug b
 
 	// // first, grab all the files with no build tags specified.. this is actually
 	// // our exclude list of things without the mage build tag.
-	cmd := exec.Command(goCmd, "list", "-e", "-f", `{{join .GoFiles "||"}}`)
+	cmd := exec.Command(opts.goCmd, opts.cmd("-e", "-f", `{{join .GoFiles "||"}}`)...)
 	cmd.Env = env
 	buf := &bytes.Buffer{}
 	cmd.Stderr = buf
@@ -476,11 +496,12 @@ func Magefiles(magePath, goos, goarch, goCmd string, stderr io.Writer, isDebug b
 		}
 	}
 	debug.Println("getting all files plus mage files")
-	cmd = exec.Command(goCmd, "list", "-tags=mage", "-e", "-f", `{{join .GoFiles "||"}}`)
+	cmd = exec.Command(opts.goCmd, opts.cmd("-tags=mage", "-e", "-f", `{{join .GoFiles "||"}}`)...)
 	cmd.Env = env
 
 	buf.Reset()
 	cmd.Dir = magePath
+	cmd.Stderr = buf
 	b, err = cmd.Output()
 	if err != nil {
 		return fail(fmt.Errorf("failed to list mage gofiles: %v: %s", err, buf.Bytes()))
@@ -499,33 +520,44 @@ func Magefiles(magePath, goos, goarch, goCmd string, stderr io.Writer, isDebug b
 	return files, nil
 }
 
-// Compile uses the go tool to compile the files into an executable at path.
-func Compile(goos, goarch, ldflags, magePath, goCmd, compileTo string, gofiles []string, isDebug bool, stderr, stdout io.Writer) error {
-	debug.Println("compiling to", compileTo)
-	debug.Println("compiling using gocmd:", goCmd)
-	if isDebug {
-		internal.RunDebug(goCmd, "version")
-		internal.RunDebug(goCmd, "env")
+func (r listOptions) cmd(args ...string) []string {
+	if r.modMode != "" {
+		args = append(args, "-mod", r.modMode)
 	}
-	environ, err := internal.EnvWithGOOS(goos, goarch)
+	return append([]string{"list"}, args...)
+}
+
+type listOptions struct {
+	goos    string
+	goarch  string
+	goCmd   string
+	modMode string
+	stderr  io.Writer
+}
+
+// Compile uses the go tool to compile the files into an executable at path.
+func Compile(magePath string, opts compileOptions) error {
+	debug.Println("compiling to", opts.compileTo)
+	debug.Println("compiling using gocmd:", opts.goCmd)
+	if opts.isDebug {
+		internal.RunDebug(opts.goCmd, "version")
+		internal.RunDebug(opts.goCmd, "env")
+	}
+	environ, err := internal.EnvWithGOOS(opts.goos, opts.goarch)
 	if err != nil {
 		return err
 	}
 	// strip off the path since we're setting the path in the build command
-	for i := range gofiles {
-		gofiles[i] = filepath.Base(gofiles[i])
+	for i := range opts.gofiles {
+		opts.gofiles[i] = filepath.Base(opts.gofiles[i])
 	}
-	buildArgs := []string{"build", "-o", compileTo}
-	if ldflags != "" {
-		buildArgs = append(buildArgs, "-ldflags", ldflags)
-	}
-	args := append(buildArgs, gofiles...)
 
-	debug.Printf("running %s %s", goCmd, strings.Join(args, " "))
-	c := exec.Command(goCmd, args...)
+	args := opts.cmd()
+	debug.Printf("running %s %s", opts.goCmd, strings.Join(args, " "))
+	c := exec.Command(opts.goCmd, args...)
 	c.Env = environ
-	c.Stderr = stderr
-	c.Stdout = stdout
+	c.Stderr = opts.stderr
+	c.Stdout = opts.stdout
 	c.Dir = magePath
 	start := time.Now()
 	err = c.Run()
@@ -534,6 +566,29 @@ func Compile(goos, goarch, ldflags, magePath, goCmd, compileTo string, gofiles [
 		return errors.New("error compiling magefiles")
 	}
 	return nil
+}
+
+func (r compileOptions) cmd(args ...string) []string {
+	if r.modMode != "" {
+		args = append(args, "-mod", r.modMode)
+	}
+	if r.ldflags != "" {
+		args = append(args, "-ldflags", r.ldflags)
+	}
+	args = append(args, r.gofiles...)
+	return append([]string{"build", "-o", r.compileTo}, args...)
+}
+
+type compileOptions struct {
+	goos           string
+	goarch         string
+	ldflags        string
+	goCmd          string
+	compileTo      string
+	gofiles        []string
+	isDebug        bool
+	stderr, stdout io.Writer
+	modMode        string
 }
 
 // GenerateMainfile generates the mage mainfile at path.

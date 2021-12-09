@@ -189,7 +189,11 @@ func TestTransitiveHashFast(t *testing.T) {
 
 func TestListMagefilesMain(t *testing.T) {
 	buf := &bytes.Buffer{}
-	files, err := Magefiles("testdata/mixed_main_files", "", "", "go", buf, false)
+	opts := listOptions{
+		goCmd:  "go",
+		stderr: buf,
+	}
+	files, err := Magefiles("testdata/mixed_main_files", opts)
 	if err != nil {
 		t.Errorf("error from magefile list: %v: %s", err, buf)
 	}
@@ -210,7 +214,11 @@ func TestListMagefilesIgnoresGOOS(t *testing.T) {
 		os.Setenv("GOOS", "windows")
 	}
 	defer os.Setenv("GOOS", runtime.GOOS)
-	files, err := Magefiles("testdata/goos_magefiles", "", "", "go", buf, false)
+	opts := listOptions{
+		goCmd:  "go",
+		stderr: buf,
+	}
+	files, err := Magefiles("testdata/goos_magefiles", opts)
 	if err != nil {
 		t.Errorf("error from magefile list: %v: %s", err, buf)
 	}
@@ -234,7 +242,13 @@ func TestListMagefilesIgnoresRespectsGOOSArg(t *testing.T) {
 		goos = "windows"
 	}
 	// Set GOARCH as amd64 because windows is not on all non-x86 architectures.
-	files, err := Magefiles("testdata/goos_magefiles", goos, "amd64", "go", buf, false)
+	opts := listOptions{
+		goos:   goos,
+		goarch: "amd64",
+		goCmd:  "go",
+		stderr: buf,
+	}
+	files, err := Magefiles("testdata/goos_magefiles", opts)
 	if err != nil {
 		t.Errorf("error from magefile list: %v: %s", err, buf)
 	}
@@ -308,7 +322,11 @@ func TestCompileDiffGoosGoarch(t *testing.T) {
 
 func TestListMagefilesLib(t *testing.T) {
 	buf := &bytes.Buffer{}
-	files, err := Magefiles("testdata/mixed_lib_files", "", "", "go", buf, false)
+	opts := listOptions{
+		goCmd:  "go",
+		stderr: buf,
+	}
+	files, err := Magefiles("testdata/mixed_lib_files", opts)
 	if err != nil {
 		t.Errorf("error from magefile list: %v: %s", err, buf)
 	}
@@ -1474,7 +1492,13 @@ func TestGoCmd(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	if err := Compile("", "", "", dir, os.Args[0], name, []string{}, false, stderr, buf); err != nil {
+	opts := compileOptions{
+		goCmd:     os.Args[0],
+		compileTo: name,
+		stderr:    stderr,
+		stdout:    buf,
+	}
+	if err := Compile(dir, opts); err != nil {
 		t.Log("stderr: ", stderr.String())
 		t.Fatal(err)
 	}
