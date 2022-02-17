@@ -110,6 +110,7 @@ type Invocation struct {
 	GOARCH     string        // sets the GOARCH when producing a binary with -compileout
 	Ldflags    string        // sets the ldflags when producing a binary with -compileout
 	ModMode    string        // sets the module download mode
+	BuildTags  string        // optional comma-separated list of build tags
 	Stdout     io.Writer     // writer to write stdout messages to
 	Stderr     io.Writer     // writer to write stderr messages to
 	Stdin      io.Reader     // reader to read stdin from
@@ -188,6 +189,7 @@ func Parse(stderr, stdout io.Writer, args []string) (inv Invocation, cmd Command
 	fs.StringVar(&inv.GOARCH, "goarch", "", "set GOARCH for binary produced with -compile")
 	fs.StringVar(&inv.Ldflags, "ldflags", "", "set ldflags for binary produced with -compile")
 	fs.StringVar(&inv.ModMode, "mod", "", "set module download mode")
+	fs.StringVar(&inv.BuildTags, "tags", "", "set build tags")
 
 	// commands below
 
@@ -417,6 +419,7 @@ func Invoke(inv Invocation) int {
 		goarch:    inv.GOARCH,
 		ldflags:   inv.Ldflags,
 		modMode:   inv.ModMode,
+		tags:      inv.BuildTags,
 		compileTo: exePath,
 		goCmd:     inv.GoCmd,
 		gofiles:   files,
@@ -575,6 +578,9 @@ func (r compileOptions) cmd(args ...string) []string {
 	if r.ldflags != "" {
 		args = append(args, "-ldflags", r.ldflags)
 	}
+	if r.tags != "" {
+		args = append(args, "-tags", r.tags)
+	}
 	args = append(args, r.gofiles...)
 	return append([]string{"build", "-o", r.compileTo}, args...)
 }
@@ -589,6 +595,7 @@ type compileOptions struct {
 	isDebug        bool
 	stderr, stdout io.Writer
 	modMode        string
+	tags           string
 }
 
 // GenerateMainfile generates the mage mainfile at path.
