@@ -389,7 +389,7 @@ func Invoke(inv Invocation) int {
 		parse.EnableDebug()
 	}
 	debug.Println("parsing files")
-	info, err := parse.PrimaryPackage(inv.GoCmd, inv.Dir, fnames)
+	info, err := parse.PrimaryPackage(inv.GoCmd, inv.Dir, inv.BuildTags, fnames)
 	if err != nil {
 		errlog.Println("Error parsing magefiles:", err)
 		return 1

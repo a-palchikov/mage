@@ -14,7 +14,7 @@ func init() {
 }
 
 func TestParse(t *testing.T) {
-	info, err := PrimaryPackage("go", "./testdata", []string{"func.go", "command.go", "alias.go", "repeating_synopsis.go", "subcommands.go"})
+	info, err := PrimaryPackage("go", "./testdata", "", []string{"func.go", "command.go", "alias.go", "repeating_synopsis.go", "subcommands.go"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,8 @@ func TestParse(t *testing.T) {
 }
 
 func TestGetImportSelf(t *testing.T) {
-	imp, err := getImport("go", "github.com/magefile/mage/parse/testdata/importself", "")
+	p := importParser{gocmd: "go"}
+	imp, err := p.getImport("github.com/magefile/mage/parse/testdata/importself", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ func TestGetImportSelf(t *testing.T) {
 }
 
 func TestDeinitRemovesItselfFromImports(t *testing.T) {
-	info, err := PrimaryPackage("go", "./testdata/deinit_import", nil)
+	info, err := PrimaryPackage("go", "./testdata/deinit_import", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +161,7 @@ func TestDeinitRemovesItselfFromImports(t *testing.T) {
 }
 
 func TestNoDeinitByDefault(t *testing.T) {
-	info, err := PrimaryPackage("go", "./testdata", []string{"func.go", "repeating_synopsis.go", "subcommands.go"})
+	info, err := PrimaryPackage("go", "./testdata", "", []string{"func.go", "repeating_synopsis.go", "subcommands.go"})
 	if err != nil {
 		t.Fatal(err)
 	}

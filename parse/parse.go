@@ -177,13 +177,15 @@ func (f Function) ExecCode() string {
 }
 
 // PrimaryPackage parses a package.  If files is non-empty, it will only parse the files given.
-func PrimaryPackage(gocmd, path string, files []string) (*PkgInfo, error) {
+func PrimaryPackage(gocmd, path, buildTags string, files []string) (*PkgInfo, error) {
 	info, err := Package(path, files)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := setImports(gocmd, info); err != nil {
+	p := importParser{gocmd: gocmd, buildTags: buildTags}
+
+	if err := p.setImports(info); err != nil {
 		return nil, err
 	}
 
@@ -191,6 +193,11 @@ func PrimaryPackage(gocmd, path string, files []string) (*PkgInfo, error) {
 	setDeinit(info)
 	setAliases(info)
 	return info, nil
+}
+
+type importParser struct {
+	gocmd     string
+	buildTags string
 }
 
 func checkDupes(info *PkgInfo, imports []*Import) error {
@@ -269,11 +276,11 @@ func Package(path string, files []string) (*PkgInfo, error) {
 	return pi, nil
 }
 
-func getNamedImports(gocmd string, pkgs map[string]string) ([]*Import, error) {
+func (r importParser) getNamedImports(pkgs map[string]string) ([]*Import, error) {
 	var imports []*Import
 	for pkg, alias := range pkgs {
 		debug.Printf("getting import package %q, alias %q", pkg, alias)
-		imp, err := getImport(gocmd, pkg, alias)
+		imp, err := r.getImport(pkg, alias)
 		if err != nil {
 			return nil, err
 		}
@@ -283,8 +290,8 @@ func getNamedImports(gocmd string, pkgs map[string]string) ([]*Import, error) {
 }
 
 // getImport returns the metadata about a package that has been mage:import'ed.
-func getImport(gocmd, importpath, alias string) (*Import, error) {
-	out, err := internal.OutputDebug(gocmd, "list", "-f", "{{.Dir}}||{{.Name}}", importpath)
+func (r importParser) getImport(importpath, alias string) (*Import, error) {
+	out, err := r.listCmd("-f", "{{.Dir}}||{{.Name}}", importpath)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +305,7 @@ func getImport(gocmd, importpath, alias string) (*Import, error) {
 	// we use go list to get the list of files, since go/parser doesn't differentiate between
 	// go files with build tags etc, and go list does. This prevents weird problems if you
 	// have more than one package in a folder because of build tags.
-	out, err = internal.OutputDebug(gocmd, "list", "-f", `{{join .GoFiles "||"}}`, importpath)
+	out, err = r.listCmd("-f", `{{join .GoFiles "||"}}`, importpath)
 	if err != nil {
 		return nil, err
 	}
@@ -314,6 +321,14 @@ func getImport(gocmd, importpath, alias string) (*Import, error) {
 		info.Funcs[i].ImportPath = importpath
 	}
 	return &Import{Alias: alias, Name: name, Path: importpath, Info: *info}, nil
+}
+
+func (r importParser) listCmd(args ...string) (output string, err error) {
+	cmd := []string{"list"}
+	if r.buildTags != "" {
+		cmd = append(cmd, "-tags", r.buildTags)
+	}
+	return internal.OutputDebug(r.gocmd, append(cmd, args...)...)
 }
 
 // Import represents the data about a mage:import package
@@ -394,7 +409,7 @@ func setNamespaces(pi *PkgInfo) {
 	}
 }
 
-func setImports(gocmd string, pi *PkgInfo) error {
+func (r importParser) setImports(pi *PkgInfo) error {
 	importNames := map[string]string{}
 	rootImports := []string{}
 	for _, f := range pi.AstPkg.Files {
@@ -423,12 +438,12 @@ func setImports(gocmd string, pi *PkgInfo) error {
 			}
 		}
 	}
-	imports, err := getNamedImports(gocmd, importNames)
+	imports, err := r.getNamedImports(importNames)
 	if err != nil {
 		return err
 	}
 	for _, s := range rootImports {
-		imp, err := getImport(gocmd, s, "")
+		imp, err := r.getImport(s, "")
 		if err != nil {
 			return err
 		}
